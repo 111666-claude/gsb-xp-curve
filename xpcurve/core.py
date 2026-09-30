@@ -1,19 +1,27 @@
-"""经验曲线：分段升级代价、批量结算与经验余数。
+"""经验结算服务：分段升级代价、结算幂等、余数保留、满级转生、增量维护等级。
 
-缺陷：所有等级都按第一段代价算（分段被忽略）、逐级扣经验（代价随等级线性增长）、
-结算时经验余数被丢弃、查询每次重算全表。
+缺陷：逐级扣经验（代价随经验量线性增长）、同一 event_id 重复结算、余数被丢弃、
+满级之后的多余经验直接消失、等级每次重算。
 """
 
 # 升到下一级所需经验的每一段：(等级上限, 每级经验)，最后一段上限为 None。
 SEGMENTS = ((10, 100), (30, 200), (None, 500))
 
+# MAX_LEVEL 是等级上限，PrestigeUnit 是满级后多少点经验换 1 点转生点。
+MAX_LEVEL = 60
+PRESTIGE_UNIT = 1000
+
 
 class Curve:
-    """经验曲线。"""
+    """每个玩家一条结算记录：[等级, 余数, 转生点]。"""
 
-    def __init__(self, segments=SEGMENTS):
+    def __init__(self, segments=SEGMENTS, max_level=MAX_LEVEL, prestige_unit=PRESTIGE_UNIT):
         self.segments = segments
-        self.steps = 0
+        self.max_level = max_level
+        self.prestige_unit = prestige_unit
+        self.state = {}
+        self.handled = set()
+        self.work = 0
 
     def cost(self, level):
         """升到 level+1 需要的经验。"""
@@ -22,24 +30,34 @@ class Curve:
                 return per
         return self.segments[-1][1]
 
-    def level_for(self, xp):
-        """按总经验换算等级。
+    def award(self, event_id, player, gain):
+        """结算一次经验收益，返回结算后的等级。
 
-        缺陷：无视后面的分段，一律按 100 经验一级逐级扣（代价随经验线性增长）。
+        缺陷：不去重（同一 event_id 重复结算）、逐级扣经验（忽略分段）、
+        余数丢弃、满级之后的多余经验不转成转生点。
         """
+        self.state[player] = self.state.get(player, 0) + gain
+        return self._level_of_total(self.state[player])
+
+    def level_of(self, player):
+        """等级。缺陷：每次重算（同样是逐级循环）。"""
+        return self._level_of_total(self.state.get(player, 0))
+
+    def _level_of_total(self, total):
         level = 1
-        while xp >= 100:
-            self.steps += 1
-            xp -= 100
+        while total >= 100:
+            self.work += 1
+            total -= 100
             level += 1
         return level
 
-    def add(self, xp, gain, now_ms=0):
-        """结算一次经验收益，返回 (等级, 余数)。
+    def remainder_of(self, player):
+        """当前等级内的余数。缺陷：没有余数概念。"""
+        return 0
 
-        缺陷：余数永远返回 0（被丢掉），负数收益也不做下限保护。
-        """
-        return self.level_for(xp + gain), 0
+    def prestige_of(self, player):
+        """转生点。缺陷：满级经验直接丢。"""
+        return 0
 
-    def steps_count(self):
-        return self.steps
+    def work_count(self):
+        return self.work

@@ -14,12 +14,20 @@ class CostTest(unittest.TestCase):
         self.assertEqual(Curve().cost(40), 500)
 
 
-class LevelTest(unittest.TestCase):
-    def test_zero_xp_is_level_one(self):
-        self.assertEqual(Curve().level_for(0), 1)
-
+class AwardTest(unittest.TestCase):
     def test_first_level_up(self):
-        self.assertEqual(Curve().level_for(100), 2)
+        self.assertEqual(Curve().award("e1", "p", 100), 2)
+
+    def test_zero_gain_stays_level_one(self):
+        self.assertEqual(Curve().award("e1", "p", 0), 1)
+
+
+class QueryTest(unittest.TestCase):
+    def test_unknown_player_is_level_one(self):
+        self.assertEqual(Curve().level_of("missing"), 1)
+
+    def test_work_starts_at_zero(self):
+        self.assertEqual(Curve().work_count(), 0)
 
 
 if __name__ == "__main__":
